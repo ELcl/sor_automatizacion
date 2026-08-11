@@ -1,0 +1,129 @@
+@page {
+    size: letter portrait; /* Forzado nativo a tamaño carta vertical */
+    margin: 0; /* Dejamos que el CSS controle los márgenes limpios */
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10px;
+    color: #000;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f4f6; /* Gris exterior sutil para la visualización en app */
+}
+
+/* Centrado con márgenes externos generosos imitando una hoja real */
+.contenedor-pagina {
+    max-width: 760px; /* Reducido ligeramente para garantizar márgenes laterales perfectos */
+    margin: 40px auto;
+    padding: 0 20px;
+}
+
+/* La hoja en sí: añadimos paddings más amplios imitando márgenes físicos de impresión */
+.hoja-solicitud {
+    width: 100%;
+    background-color: #fff;
+    padding: 45px 40px; /* Márgenes internos simulados (superior/inferior y laterales) */
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+    box-sizing: border-box;
+    page-break-inside: avoid;
+    margin-bottom: 40px;
+}
+
+.salto-pagina {
+    page-break-after: always;
+}
+
+/* ==========================================
+   CONTROL DE GRILLA CON BORDES SÓLIDOS
+   ========================================== */
+.tabla-bloque {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+    margin-bottom: -1px; /* Evita dobles líneas gruesas entre tablas */
+    table-layout: fixed;
+}
+
+.tabla-bloque td {
+    border: 1px solid #000;
+    vertical-align: middle;
+    color: #000;
+    word-wrap: break-word;
+}
+
+/* Logotipo institucional */
+.logo-empresa {
+    height: 36px;
+    max-width: 100%;
+    display: block;
+    margin: 4px auto;
+}
+
+.titulo-empresa {
+    font-size: 12px;
+    font-weight: bold;
+    display: block;
+    letter-spacing: -0.1px;
+}
+
+.sub-solicitud {
+    font-size: 11px;
+    font-weight: bold;
+    margin-top: 4px;
+    letter-spacing: 0.5px;
+}
+
+/* ==========================================
+   TABLA DE MANIOBRAS CRONOLÓGICAS
+   ========================================== */
+.tabla-maniobras {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+    table-layout: fixed;
+}
+
+.tabla-maniobras th {
+    border: 1px solid #000;
+    background-color: #f2f2f0;
+    font-size: 9.5px;
+    font-weight: bold;
+    padding: 5px 2px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.tabla-maniobras td {
+    border: 1px solid #000;
+    padding: 4px 5px;
+    vertical-align: middle;
+    line-height: 1.25;
+    word-wrap: break-word;
+}
+
+/* Clases útiles */
+.txt-centro {
+    text-align: center;
+}
+
+.txt-bold {
+    font-weight: bold;
+}
+
+/* Configuración de limpieza para la salida física de impresora o PDF */
+@media print {
+    body {
+        background-color: #fff;
+    }
+    .contenedor-pagina {
+        max-width: 100%;
+        margin: 0;
+        padding: 0;
+    }
+    .hoja-solicitud {
+        padding: 45px 40px; /* Respeta los márgenes al transformarse en PDF */
+        box-shadow: none;
+        margin-bottom: 0;
+    }
+}

@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Solicitud de Operaciones en Lote</title>
+    <style>
+        /* --- ESTILOS COMPLETO PARA REPORTES --- */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 10px;
+            color: #333333;
+            background-color: #ffffff;
+            line-height: 1.2;
+        }
+
+        .contenedor-pagina {
+            width: 100%;
+            max-width: 800px; /* Ideal para visualización en pantalla y tamaño Carta/A4 */
+            margin: 0 auto;
+            padding: 10px;
+        }
+
+        .hoja-solicitud {
+            width: 100%;
+            margin-bottom: 20px;
+            page-break-inside: avoid; /* Evita que una solicitud se corte a la mitad si es posible */
+        }
+
+        /* Estructura de bloques de tablas */
+        .tabla-bloque, .tabla-maniobras {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 8px;
+            table-layout: fixed; /* Fuerza el respeto estricto de los anchos en % que pusiste */
+        }
+
+        .tabla-bloque td {
+            border: 1px solid #bcbcbc;
+            vertical-align: middle;
+            word-wrap: break-word;
+        }
+
+        /* Tabla específica de maniobras/operaciones */
+        .tabla-maniobras th, .tabla-maniobras td {
+            border: 1px solid #666666;
+            padding: 4px;
+            word-wrap: break-word;
+            vertical-align: top;
+        }
+
+        .tabla-maniobras th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            font-size: 9px;
+            text-align: center;
+            text-transform: uppercase;
+        }
+
+        /* Clases de Utilidad utilizadas en tu HTML */
+        .logo-empresa {
+            max-height: 45px;
+            max-width: 100%;
+            object-fit: contain;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .titulo-empresa {
+            font-weight: bold;
+            font-size: 11px;
+            color: #0b3c5d; /* Tono corporativo estándar */
+            display: block;
+        }
+
+        .sub-solicitud {
+            font-weight: bold;
+            font-size: 12px;
+            margin-top: 3px;
+            letter-spacing: 1px;
+        }
+
+        .txt-bold {
+            font-weight: bold;
+        }
+
+        .txt-centro {
+            text-align: center;
+        }
+
+        /* Control de salto de página para impresión/PDF */
+        .salto-pagina {
+            page-break-before: always;
+            height: 0;
+            border: none;
+        }
+
+        @media print {
+            body {
+                font-size: 9.5px;
+            }
+            .contenedor-pagina {
+                max-width: 100%;
+                padding: 0;
+            }
+            .hoja-solicitud {
+                margin-bottom: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="contenedor-pagina">
+        {% for solicitud in solicitudes %}
+        <div class="hoja-solicitud">
+            <table class="tabla-bloque">
+                <tr>
+                    <td style="width: 20%; text-align: center; padding: 5px;">
+                        <img src="logo.jpg" alt="DELAPAZ" class="logo-empresa">
+                    </td>
+                    <td style="width: 55%; text-align: center; padding: 6px;">
+                        <span class="titulo-empresa">DISTRIBUIDORA DE ELECTRICIDAD DE LA PAZ S.A.</span>
+                        <div class="sub-solicitud">SOLICITUD DE OPERACIONES</div>
+                    </td>
+                    <td style="width: 25%; font-size: 9px; padding: 5px; line-height: 1.3; vertical-align: top;">
+                        <span class="txt-bold">N°</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span class="txt-bold">{{ solicitud.numero }}</span><br>
+                        <span style="display: inline-block; margin-top: 3px;"><span class="txt-bold">SECCION:</span> {{ solicitud.seccion }}</span><br>
+                        <!-- <span class="txt-bold">VILIROCO</span> -->
+                    </td>
+                </tr>
+            </table>
+
+            <table class="tabla-bloque">
+                <tr>
+                    <td style="width: 72%; padding: 5px 6px;">
+                        <span class="txt-bold">Zona:</span> {{ solicitud.zona }}
+                    </td>
+                    <td style="width: 28%; padding: 5px 6px;">
+                        <span class="txt-bold">El Señor:</span> {{ solicitud.senor }}
+                    </td>
+                </tr>
+            </table>
+
+            <table class="tabla-bloque">
+                <tr>
+                    <td style="padding: 4px 6px; font-weight: bold; font-size: 10px; background-color: #fafafa;">
+                        Solicita realizar las operaciones abajo descritas:
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 6px; line-height: 1.3; font-size: 9.5px;">
+                        <span class="txt-bold"><em>{% if solicitud.modalidad == '01' %}NUEVO{% else %}SISTEMA{% endif %}</em></span> {{ solicitud.descripcion_completa }}
+                    </td>
+                </tr>
+            </table>
+
+            <table class="tabla-bloque">
+                <!-- REEMPLAZA EL BLOQUE DE LAS HORAS POR ESTE DISEÑO DE 2 FILAS -->
+<tr style="border-bottom: 1px solid #ccc;">
+    <td colspan="4" style="padding: 6px 8px;">
+        <span class="txt-bold">Desde hrs:</span> {{ solicitud.hora_desde }} 
+        <span class="txt-bold" style="margin-left: 15px;">del día:</span> {{ solicitud.fecha_dia }}
+    </td>
+</tr>
+<tr>
+    <td colspan="4" style="padding: 6px 8px;">
+        <span class="txt-bold">Hasta hrs:</span> {{ solicitud.hora_hasta }} 
+        <span class="txt-bold" style="margin-left: 18px;">del día:</span> {{ solicitud.fecha_dia }}
+    </td>
+</tr>
+            </table>
+
+            <table class="tabla-bloque">
+                <tr>
+                    <td style="padding: 5px 6px; line-height: 1.3; font-size: 9.5px;">
+                        <span class="txt-bold">Clase de trabajo y motivo para efectuarlo:</span> {{ solicitud.motivo }}
+                    </td>
+                </tr>
+            </table>
+
+            <table class="tabla-bloque">
+                <tr>
+                    <td colspan="4" style="padding: 5px 6px;">
+                        <span class="txt-bold">Según proyecto OC:</span> {{ solicitud.proyecto_oc }}
+                    </td>
+                </tr>
+                <tr>
+                    <td style="width: 25%; padding: 5px 6px;"><span class="txt-bold">Trabajo a cargo de:</span> {{ solicitud.cargo_de }}</td>
+                    <td style="width: 25%; padding: 5px 6px;"><span class="txt-bold">Aprobado por el Ing:</span> {{ solicitud.aprobado_ing }}</td>
+                    <td style="width: 25%; padding: 5px 6px;"><span class="txt-bold">Autorizado por COI:</span> {{ solicitud.autorizado_coi }}</td>
+                    <td style="width: 25%; padding: 5px 6px;"><span class="txt-bold">Modalidad Descargo:</span> {{ solicitud.modalidad }}</td>
+                </tr>
+                <tr>
+                    <td style="width: 25%; padding: 5px 6px;">
+                        <span class="txt-bold">Publicado en prensa:</span> {{ solicitud.publicado_prensa }} 
+                    </td>
+                    <td style="width: 25%; padding: 5px 6px;">
+                        <span class="txt-bold">Avisó personalmente:</span> {{ solicitud.aviso_personal }}
+                    </td>
+                    <td style="width: 25%; padding: 5px 6px;">
+                        <span class="txt-bold">Aviso Municipal:</span> {{ solicitud.aviso_municipal }}
+                    </td>
+                    <td style="width: 25%; padding: 5px 6px;">
+                        <span class="txt-bold">Nombre del AZT:</span> {{ solicitud.nombre_azt }}
+                    </td>
+                </tr>
+            </table>
+
+            <table class="tabla-maniobras">
+                <thead>
+                    <tr>
+                        <th style="width: 5%;">N°</th>
+                        <th style="width: 22%;">LUGAR</th>
+                        <th style="width: 49%;">OPERACIONES</th>
+                        <th style="width: 12%;">EFECTUADO POR</th>
+                        <th style="width: 6%;">HORA Prog.</th>
+                        <th style="width: 6%;">HORA Real</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for op in solicitud.operaciones %}
+                    <tr>
+                        <td class="txt-centro">{{ op.num }}</td>
+                        <td style="font-size: 9.5px;">{{ op.lugar }}</td>
+                        <td style="font-size: 9.5px;">{{ op.operacion | safe }}</td>
+                        <td class="txt-centro" style="font-size: 9px;">{{ op.efectuado_por }}</td>
+                        <td class="txt-centro txt-bold" style="font-size: 10px;">{{ op.hora_prog }}</td>
+                        <td class="txt-centro">{{ op.hora_real }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if not loop.last %}
+        <div class="salto-pagina"></div>
+        {% endif %}
+        {% endfor %}
+    </div>
+</body>
+</html>

@@ -1,0 +1,8 @@
+[browser]
+gatherUsageStats = false
+
+[server]
+# Esto asegura que si hay textos internos del servidor, viajen limpios
+enableCORS = false
+enableXsrfProtection = false
+enableStaticServing = true

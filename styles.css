@@ -1,0 +1,329 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+    font-family: 'Inter', sans-serif;
+}
+
+/* ANIMACIÓN DE RESPIRACIÓN (PULSACIÓN DE OPACIDAD DE LA MALLA) */
+@keyframes pulseMesh {
+    0% { opacity: 0.15; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(1.02); }
+    100% { opacity: 0.15; transform: scale(1); }
+}
+
+/* ANIMACIÓN DEL FLUIDO DE LUZ HORIZONTAL */
+@keyframes energyFlow {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+/* BANNER BASE CON FONDO DE GRADIENTE OSCURO */
+.energy-banner {
+    position: relative;
+    background: linear-gradient(135deg, #021B18 0%, #063C38 50%, #021B18 100%);
+    padding: 40px 20px;
+    text-align: center;
+    border-radius: 12px;
+    margin-bottom: 30px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    border: none !important;
+    overflow: hidden;
+}
+
+/* CAPA DE MALLA GEOMÉTRICA CON ANIMACIÓN DE PULSACIÓN */
+.energy-banner::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: 
+        linear-gradient(135deg, rgba(0, 230, 118, 0.25) 25%, transparent 25%), 
+        linear-gradient(225deg, rgba(0, 230, 118, 0.25) 25%, transparent 25%), 
+        linear-gradient(45deg, rgba(0, 230, 118, 0.25) 25%, transparent 25%), 
+        linear-gradient(315deg, rgba(0, 230, 118, 0.25) 25%, transparent 25%);
+    background-position: 20px 0, 20px 0, 0 0, 0 0;
+    background-size: 40px 40px;
+    background-repeat: repeat;
+    animation: pulseMesh 6s infinite ease-in-out;
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* CAPA DE REFLEJO DE ENERGÍA MÓVIL */
+.energy-banner::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(
+        90deg, 
+        transparent, 
+        rgba(255, 255, 255, 0.15), 
+        rgba(0, 230, 118, 0.2), 
+        transparent
+    );
+    transform: skewX(-20deg);
+    animation: energyFlow 5s infinite cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 2;
+    pointer-events: none;
+}
+
+.energy-banner h1 {
+    position: relative;
+    z-index: 3;
+    color: #FFFFFF !important;
+    font-size: 30px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.08em;
+    margin: 0 !important;
+    text-transform: uppercase;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+}
+
+.menu-container {
+    background-color: var(--secondary-background-color);
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    margin-bottom: 24px;
+}
+
+.menu-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #E04F1D;
+    margin-bottom: 15px;
+    text-transform: uppercase;
+    border-left: 3px solid #E04F1D;
+    padding-left: 8px;
+}
+
+.contact-card {
+    background-color: #052E2B;
+    color: #FFFFFF;
+    padding: 24px 16px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 10px 25px rgba(5, 46, 43, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.1); 
+}
+
+.contact-card h3 {
+    color: #FFFFFF !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    line-height: 1.3;
+    margin: 0 0 12px 0 !important;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+/* ANIMACIONES DEL PERSONAJE Y CONTENIDO */
+@keyframes fadeInScale {
+    0% {
+        opacity: 0;
+        transform: translateX(-50%) scale(0.92);
+    }
+    100% {
+        opacity: 1;
+        transform: translateX(-50%) scale(1);
+    }
+}
+
+@keyframes fadeContenido {
+    0% { opacity: 0; transform: translateX(10px); }
+    100% { opacity: 1; transform: translateX(0); }
+}
+
+.personaje-container {
+    position: relative;
+    width: 100%;
+    height: 250px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 15px;
+}
+
+.personaje-img {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    max-height: 250px;
+    width: auto;
+    object-fit: contain;
+    filter: drop-shadow(0px 4px 8px rgba(0,0,0,0.3));
+}
+
+.personaje-img.oculto {
+    display: none !important;
+    opacity: 0;
+    visibility: hidden;
+}
+
+.personaje-img.visible {
+    display: block !important;
+    opacity: 1;
+    visibility: visible;
+    animation: fadeInScale 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background-color: var(--background-color);
+    border: 1px solid var(--border-color) !important;
+    border-radius: 8px;
+    animation: fadeContenido 0.4s ease-out forwards;
+}
+
+.canvas-title {
+    color: var(--text-color);
+    font-weight: 800;
+    font-size: 24px;
+    margin-top: 0;
+    margin-bottom: 25px;
+    text-transform: uppercase;
+}
+
+.canvas-subtitle {
+    color: var(--text-color);
+    font-size: 16px;
+    margin-bottom: 15px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.stButton>button {
+    background-color: #E04F1D !important;
+    color: #FFFFFF !important;
+    font-weight: 700 !important;
+    font-size: 13px !important;
+    border-radius: 4px !important;
+    border: 1px solid #E04F1D !important;
+    padding: 10px 24px !important;
+    text-transform: uppercase;
+    width: 100%;
+    box-shadow: 0 4px 10px rgba(224, 79, 29, 0.2) !important;
+    transition: all 0.2s ease !important;
+}
+
+.stButton>button:hover {
+    background-color: #C23E14 !important;
+    border-color: #C23E14 !important;
+    transform: translateY(-1px);
+}
+
+.custom-footer {
+    text-align: center;
+    padding: 25px 10px;
+    margin-top: 60px;
+    border-top: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-size: 13px;
+    opacity: 0.8;
+    line-height: 1.6;
+}
+
+.footer-brand {
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #E04F1D;
+}
+
+.footer-author {
+    font-size: 11px;
+    opacity: 0.6;
+    margin-top: 4px;
+}
+
+/* ==========================================================================
+   ESTILOS PARA LA PANTALLA DE LOGIN
+   ========================================================================== */
+
+/* Contenedor principal de Login */
+.login-card {
+    max-width: 420px;
+    margin: 2rem auto;
+    padding: 2.5rem 2rem;
+    background-color: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e2e8f0;
+    text-align: center;
+}
+
+.login-header {
+    margin-bottom: 1.5rem;
+}
+
+.login-header h2 {
+    color: #1e293b;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+}
+
+.login-header p {
+    color: #64748b;
+    font-size: 0.875rem;
+}
+
+/* Badge de usuario activo en el Navbar o Sidebar */
+.user-badge {
+    padding: 0.5rem 1rem;
+    background-color: #f1f5f9;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    font-size: 0.85rem;
+    color: #334155;
+    margin-bottom: 1rem;
+}
+
+
+/* ==========================================
+   VISTA DE LOGIN & TÍTULO ELÉCTRICO
+   ========================================== */
+
+/* Título Verde con Efecto Electricidad / Neón */
+.electric-title {
+    font-size: 2.2rem !important;
+    font-weight: 800 !important;
+    color: #00ff88 !important;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-align: center;
+    margin-bottom: 5px !important;
+    text-shadow: 
+        0 0 5px #00ff88,
+        0 0 10px #00ff88,
+        0 0 20px #00ff88,
+        0 0 40px #00b359;
+    animation: electricPulse 1.8s infinite alternate ease-in-out;
+}
+
+.electric-subtitle {
+    color: #8a99ad;
+    font-size: 0.9rem;
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+@keyframes electricPulse {
+    0% {
+        text-shadow: 0 0 4px #00ff88, 0 0 11px #00ff88, 0 0 18px #00ff88;
+        opacity: 0.95;
+    }
+    50% {
+        text-shadow: 0 0 2px #00ff88, 0 0 5px #00ff88, 0 0 10px #00ff88;
+        opacity: 0.85;
+    }
+    100% {
+        text-shadow: 0 0 8px #00ff88, 0 0 20px #00ff88, 0 0 35px #00ff88, 0 0 50px #00b359;
+        opacity: 1;
+    }
+}
