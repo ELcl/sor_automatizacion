@@ -53,12 +53,17 @@ MESES_ESPANOL = {
     12: "DICIEMBRE",
 }
 
-# ORDEN REQUERIDO PARA SISTEMAS Y CIUDADES
-ORDEN_SISTEMAS = [
+# CIUDADES PERTENECIENTES AL SISTEMA MAYOR
+CIUDADES_SISTEMA_MAYOR = [
     "CIUDAD DE LA PAZ",
     "CIUDAD DE EL ALTO",
     "CIUDAD DE ACHOCALLA",
     "CIUDAD DE VIACHA",
+]
+
+# LISTA DE SISTEMAS PRINCIPALES PARA EL SELECTOR Y ORDENAMIENTO
+ORDEN_SISTEMAS = [
+    "SISTEMA MAYOR",
     "SISTEMA AROMA",
     "SISTEMA NUEVO",
     "SISTEMA NORTE",
@@ -100,6 +105,7 @@ CONFIG_PLOTLY_ES = {
 st.set_page_config(
     page_title="SOR - DELAPAZ Service Center", layout="wide", page_icon="⚡"
 )
+
 
 # ==========================================
 # INYECCIÓN DE CSS EXTERNO
@@ -347,13 +353,18 @@ def registrar_cortes_exportados(lista_prgcod, usr_id, formato="HTML"):
 
 
 def extraer_datos_db(fecha_ini, fecha_fin, estado=None):
+    """Extrae los datos desde PostgreSQL con parámetros TCP Keep-Alive incorporados."""
     try:
         conexion = psycopg2.connect(
             host=DB_HOST,
             database=DB_NAME,
             user=DB_USER,
             password=DB_PASS,
-            connect_timeout=5,
+            connect_timeout=10,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5,
         )
         if estado and estado != "TODOS":
             query = """
@@ -411,6 +422,7 @@ def extraer_datos_db(fecha_ini, fecha_fin, estado=None):
 
 
 def extraer_operaciones_lote(lista_prgcod):
+    """Extrae la lista de operaciones detalladas con TCP Keep-Alive."""
     if not lista_prgcod:
         return pd.DataFrame()
     try:
@@ -419,7 +431,11 @@ def extraer_operaciones_lote(lista_prgcod):
             database=DB_NAME,
             user=DB_USER,
             password=DB_PASS,
-            connect_timeout=5,
+            connect_timeout=10,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5,
         )
         query = """
             SELECT prgcod, prgopesec, prgopelug, prgopedsc, prgopeeje, prgopehp, prgopehr
@@ -443,7 +459,7 @@ def normalizar_texto_zonas(desc_original):
 def homologar_sistema(texto_parentesis, tdciucod=None):
     """Homologa la etiqueta del sistema y desglosa el Sistema Mayor por Ciudad usando tdciucod."""
     txt = str(texto_parentesis).upper().strip()
-    
+
     if "MAYOR" in txt or "YMAYOR" in txt:
         codigo_ciudad = str(tdciucod).strip().upper() if tdciucod else ""
         return MAPEO_CIUDADES.get(codigo_ciudad, "CIUDAD DE LA PAZ")
@@ -453,7 +469,7 @@ def homologar_sistema(texto_parentesis, tdciucod=None):
         return "SISTEMA AROMA"
     elif "NUEVO" in txt or "NVO" in txt:
         return "SISTEMA NUEVO"
-    
+
     return "SISTEMA GENERAL"
 
 
@@ -469,10 +485,10 @@ def procesar_y_agrupar(df):
 
         desc_original = str(fila["descripcion"]).strip()
         sistema_match = re.match(r"^\((.*?)\)", desc_original)
-        
+
         texto_sistema = sistema_match.group(1) if sistema_match else ""
         tdciucod_val = fila.get("tdciucod", "")
-        
+
         sistema = homologar_sistema(texto_sistema, tdciucod_val)
 
         detalle_zonas_procesado = normalizar_texto_zonas(desc_original)
@@ -484,30 +500,41 @@ def procesar_y_agrupar(df):
             else "MANTENIMIENTO PREVENTIVO"
         )
 
+        # Captura y validación del número de SOR (prglbl)
+        sor_val = (
+            str(fila["prglbl"]).strip()
+            if pd.notna(fila.get("prglbl")) and str(fila["prglbl"]).strip() != ""
+            else str(fila.get("prgcod", ""))
+        )
+
         if dia_str not in reporte_agrupado_raw:
             reporte_agrupado_raw[dia_str] = {}
         if sistema not in reporte_agrupado_raw[dia_str]:
             reporte_agrupado_raw[dia_str][sistema] = []
 
-        if not any(
-            c["hora_inicio"] == hora_ini_str and c["hora_fin"] == hora_fin_str
-            for c in reporte_agrupado_raw[dia_str][sistema]
-        ):
-            reporte_agrupado_raw[dia_str][sistema].append({
-                "motivo": motivo_str,
-                "hora_inicio": hora_ini_str,
-                "hora_fin": hora_fin_str,
-                "detalle_zonas": detalle_zonas_procesado,
-            })
+        reporte_agrupado_raw[dia_str][sistema].append({
+            "sor": sor_val,
+            "motivo": motivo_str,
+            "hora_inicio": hora_ini_str,
+            "hora_fin": hora_fin_str,
+            "detalle_zonas": detalle_zonas_procesado,
+        })
+
+    # ORDENAMIENTO COMPLETO DE SECCIONES
+    orden_secciones = CIUDADES_SISTEMA_MAYOR + [
+        "SISTEMA AROMA",
+        "SISTEMA NUEVO",
+        "SISTEMA NORTE",
+    ]
 
     reporte_ordenado = {}
     for dia_str, sistemas_dict in reporte_agrupado_raw.items():
         sistemas_ordenados = sorted(
             sistemas_dict.keys(),
             key=lambda x: (
-                ORDEN_SISTEMAS.index(x)
-                if x in ORDEN_SISTEMAS
-                else len(ORDEN_SISTEMAS)
+                orden_secciones.index(x)
+                if x in orden_secciones
+                else len(orden_secciones)
             ),
         )
         reporte_ordenado[dia_str] = {
@@ -685,11 +712,35 @@ with col_derecha:
 
         if st.session_state["vista_actual"] == "operaciones":
             st.markdown(
-                '<h3 class="canvas-title">Módulo de Exportación de Cortes de Energía</h3>',
+                '<h3 class="canvas-title">Módulo de Exportación de Interrupciones Programadas de Energía</h3>',
                 unsafe_allow_html=True,
             )
 
-            col_fecha_p1, col_estado_p1 = st.columns([2.5, 1.5])
+            # INYECCIÓN JAVASCRIPT: Escuchador en tiempo real tecla por tecla
+            st.markdown(
+                """
+                <script>
+                const doc = window.parent.document;
+                const observer = new MutationObserver(() => {
+                    const input = doc.querySelector('input[aria-label="Buscar en la tabla"]');
+                    if (input && !input.dataset.realtimeListener) {
+                        input.dataset.realtimeListener = "true";
+                        input.addEventListener('input', () => {
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+                        });
+                    }
+                });
+                observer.observe(doc.body, { childList: true, subtree: true });
+                </script>
+            """,
+                unsafe_allow_html=True,
+            )
+
+            # 1. SELECCIÓN INICIAL DE FILTROS EN LÍNEA
+            col_fecha_p1, col_sistema_p1, col_estado_p1, col_buscar_p1 = (
+                st.columns([2, 1.5, 1.2, 1.8])
+            )
+
             with col_fecha_p1:
                 rango_p1 = st.date_input(
                     "Ventana de Publicación",
@@ -709,44 +760,121 @@ with col_derecha:
                 }
 
                 estado_p1 = st.selectbox(
-                    "Estado en Base de Datos",
+                    "Estado BD",
                     options=list(ESTADOS_DB.keys()),
                     format_func=lambda clave: ESTADOS_DB[clave],
                     index=1,
                     key="estado_prensa",
                 )
 
+            with col_buscar_p1:
+                busqueda_texto = st.text_input(
+                    "Buscar en la tabla",
+                    placeholder="Escribe para filtrar...",
+                    key="busqueda_filtro_tabla",
+                )
+
             f_ini_p1 = rango_p1[0] if len(rango_p1) > 0 else datetime.now()
             f_fin_p1 = rango_p1[1] if len(rango_p1) == 2 else f_ini_p1
 
+            # 2. CONSULTA PREVIA A LA BASE DE DATOS
             df_p1 = extraer_datos_db(f_ini_p1, f_fin_p1, estado_p1)
 
+            # 3. SELECTOR DINÁMICO DE SISTEMAS Y FILTRADO MULTICOLUMNA
             if df_p1.empty:
-                st.info("ℹ️ No se registran cortes en este rango.")
+                with col_sistema_p1:
+                    st.selectbox(
+                        "Filtrar por Sistema",
+                        options=["Sin cortes registrados"],
+                        disabled=True,
+                        key="sistema_prensa_disabled",
+                    )
+                st.info("ℹ️ No se registran cortes en este rango de fechas.")
             else:
-                st.success(
-                    f"✓ Conexión establecida. Registros encontrados: {len(df_p1)}"
-                )
-
-                df_vista = df_p1.copy()
-
-                # Generación de la columna de correlativos 1..N
-                df_vista["#"] = range(1, len(df_vista) + 1)
-
-                df_vista["Sistema"] = df_vista.apply(
+                df_p1["Sistema"] = df_p1.apply(
                     lambda row: homologar_sistema(
                         re.match(r"^\((.*?)\)", str(row["descripcion"])).group(1)
                         if re.match(r"^\((.*?)\)", str(row["descripcion"]))
                         else "",
-                        row.get("tdciucod", "")
+                        row.get("tdciucod", ""),
                     ),
-                    axis=1
+                    axis=1,
                 )
+
+                def mapear_sistema_grupo(row):
+                    if row["Sistema"] in CIUDADES_SISTEMA_MAYOR:
+                        return "SISTEMA MAYOR"
+                    return row["Sistema"]
+
+                df_p1["Sistema_Grupo"] = df_p1.apply(
+                    mapear_sistema_grupo, axis=1
+                )
+
+                sistemas_presentes = sorted(
+                    df_p1["Sistema_Grupo"].unique().tolist(),
+                    key=lambda x: (
+                        ORDEN_SISTEMAS.index(x)
+                        if x in ORDEN_SISTEMAS
+                        else len(ORDEN_SISTEMAS)
+                    ),
+                )
+
+                opciones_sistema = ["TODOS"] + sistemas_presentes
+
+                with col_sistema_p1:
+                    sistema_filtro_p1 = st.selectbox(
+                        "Filtrar por Sistema",
+                        options=opciones_sistema,
+                        index=0,
+                        key="sistema_prensa_activo",
+                    )
+
+                # FILTRADO 1: Por Sistema
+                if sistema_filtro_p1 == "SISTEMA MAYOR":
+                    df_filtrado_vista = df_p1[
+                        df_p1["Sistema_Grupo"] == "SISTEMA MAYOR"
+                    ].copy()
+                elif sistema_filtro_p1 != "TODOS":
+                    df_filtrado_vista = df_p1[
+                        df_p1["Sistema_Grupo"] == sistema_filtro_p1
+                    ].copy()
+                else:
+                    df_filtrado_vista = df_p1.copy()
+
+                # FILTRADO 2: Por Texto Multicolumna
+                if busqueda_texto.strip():
+                    query_str = busqueda_texto.strip().lower()
+                    mascara_busqueda = (
+                        df_filtrado_vista["Exportado Por"]
+                        .astype(str)
+                        .str.lower()
+                        .str.contains(query_str, na=False)
+                        | df_filtrado_vista["prglbl"]
+                        .astype(str)
+                        .str.lower()
+                        .str.contains(query_str, na=False)
+                        | df_filtrado_vista["descripcion"]
+                        .astype(str)
+                        .str.lower()
+                        .str.contains(query_str, na=False)
+                        | df_filtrado_vista["motivo"]
+                        .astype(str)
+                        .str.lower()
+                        .str.contains(query_str, na=False)
+                    )
+                    df_filtrado_vista = df_filtrado_vista[mascara_busqueda].copy()
+
+                st.success(
+                    f"✓ Conexión establecida. Registros mostrados: {len(df_filtrado_vista)} (Total en fecha: {len(df_p1)})"
+                )
+
+                df_vista = df_filtrado_vista.copy()
+
+                df_vista["#"] = range(1, len(df_vista) + 1)
                 df_vista["Zonas Normalizadas"] = df_vista["descripcion"].apply(
                     normalizar_texto_zonas
                 )
 
-                # Renombrado de columnas para la vista
                 df_vista = df_vista.rename(
                     columns={"prgfhapr": "Autorizado", "prglbl": "SOR"}
                 )
@@ -764,7 +892,6 @@ with col_derecha:
                     "motivo",
                 ]
 
-                # Editor interactivo con Checkbox
                 df_editado = st.data_editor(
                     df_vista[columnas_vista],
                     column_config={
@@ -803,15 +930,15 @@ with col_derecha:
                     ],
                     use_container_width=True,
                     hide_index=True,
-                    key="editor_cortes",
+                    key=f"editor_cortes_{sistema_filtro_p1}_{busqueda_texto}",
                 )
 
-                # Mapear estado editado de las casillas de verificación al dataframe principal
-                df_p1["Incluir en Reporte"] = df_editado["Incluir en Reporte"]
+                df_filtrado_vista["Incluir en Reporte"] = df_editado[
+                    "Incluir en Reporte"
+                ]
 
-                # Filtrar los seleccionados (marcados como True)
-                df_p1_seleccionados = df_p1[
-                    df_p1["Incluir en Reporte"] == True
+                df_p1_seleccionados = df_filtrado_vista[
+                    df_filtrado_vista["Incluir en Reporte"] == True
                 ].copy()
 
                 st.markdown(
@@ -877,7 +1004,6 @@ with col_derecha:
                                     usr_id_actual = st.session_state.get(
                                         "usuario_info", {}
                                     ).get("usr_id")
-                                    # Registro explícito del formato HTML
                                     registrar_cortes_exportados(
                                         lista_codigos, usr_id_actual, "HTML"
                                     )
@@ -904,7 +1030,7 @@ with col_derecha:
 
                 with col_acc2:
                     st.markdown(
-                        "<p style='font-size:13px; margin-bottom:12px;'><strong>Reporte para Medios de Prensa (Word):</strong> Consolida y agrupa la información de manera amigable para el público.</p>",
+                        "<p style='font-size:13px; margin-bottom:12px;'><strong>Reporte para Medios de Prensa (Word):</strong> Consolida y agrupa la información para el reporte en prensa.</p>",
                         unsafe_allow_html=True,
                     )
                     if df_p1_seleccionados.empty:
@@ -915,55 +1041,97 @@ with col_derecha:
                         reporte_estructurado = procesar_y_agrupar(
                             df_p1_seleccionados
                         )
-                        try:
-                            # 1. Construcción dinámica de la fecha actual de emisión
-                            fecha_actual = datetime.now()
-                            dia_act = fecha_actual.day
-                            mes_act = MESES_ESPANOL.get(fecha_actual.month, "JULIO").lower()
-                            anio_act = fecha_actual.year
-                            fecha_pie_str = f"La Paz, {dia_act} de {mes_act} de {anio_act}"
 
-                            # 2. Render de plantilla Word con contexto
-                            doc = DocxTemplate("plantilla_cortes.docx")
-                            contexto = {
-                                "reporte_agrupado": reporte_estructurado,
-                                "fecha_emision_pie": fecha_pie_str,
-                            }
-                            doc.render(contexto)
+                        if sistema_filtro_p1 == "SISTEMA MAYOR":
+                            reporte_a_renderizar = {}
+                            for dia, sistemas in reporte_estructurado.items():
+                                sistemas_mayor = {
+                                    sis: cortes
+                                    for sis, cortes in sistemas.items()
+                                    if sis in CIUDADES_SISTEMA_MAYOR
+                                }
+                                if sistemas_mayor:
+                                    reporte_a_renderizar[dia] = sistemas_mayor
 
-                            target_stream = BytesIO()
-                            doc.save(target_stream)
-                            target_stream.seek(0)
+                        elif sistema_filtro_p1 != "TODOS":
+                            reporte_a_renderizar = {}
+                            for dia, sistemas in reporte_estructurado.items():
+                                if sistema_filtro_p1 in sistemas:
+                                    reporte_a_renderizar[dia] = {
+                                        sistema_filtro_p1: sistemas[
+                                            sistema_filtro_p1
+                                        ]
+                                    }
+                        else:
+                            reporte_a_renderizar = reporte_estructurado
 
-                            fecha_ini_str = f_ini_p1.strftime("%Y%m%d")
-                            if f_fin_p1 and f_fin_p1 != f_ini_p1:
-                                nombre_word = f"Aviso_Cortes_{fecha_ini_str}_a_{f_fin_p1.strftime('%Y%m%d')}.docx"
-                            else:
-                                nombre_word = f"Aviso_Cortes_{fecha_ini_str}.docx"
+                        if not reporte_a_renderizar:
+                            st.warning(
+                                f"⚠️ No hay cortes en los registros seleccionados para {sistema_filtro_p1}."
+                            )
+                        else:
+                            try:
+                                fecha_actual = datetime.now()
+                                dia_act = fecha_actual.day
+                                mes_act = MESES_ESPANOL.get(
+                                    fecha_actual.month, "JULIO"
+                                ).lower()
+                                anio_act = fecha_actual.year
+                                fecha_pie_str = f"La Paz, {dia_act} de {mes_act} de {anio_act}"
 
-                            if st.download_button(
-                                label="Descargar Documento Word",
-                                data=target_stream,
-                                file_name=nombre_word,
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            ):
-                                usr_id_actual = st.session_state.get(
-                                    "usuario_info", {}
-                                ).get("usr_id")
-                                lista_codigos = df_p1_seleccionados[
-                                    "prgcod"
-                                ].tolist()
-                                # Registro explícito del formato DOCX
-                                registrar_cortes_exportados(
-                                    lista_codigos, usr_id_actual, "DOCX"
+                                doc = DocxTemplate("plantilla_cortes.docx")
+                                contexto = {
+                                    "reporte_agrupado": reporte_a_renderizar,
+                                    "fecha_emision_pie": fecha_pie_str,
+                                }
+                                doc.render(contexto)
+
+                                target_stream = BytesIO()
+                                doc.save(target_stream)
+                                target_stream.seek(0)
+
+                                fecha_ini_str = f_ini_p1.strftime("%Y%m%d")
+                                sufijo_sistema = (
+                                    sistema_filtro_p1.replace(" ", "_").upper()
+                                    if sistema_filtro_p1 != "TODOS"
+                                    else "TODOS"
                                 )
-                                st.success(
-                                    "🎉 Documento Word descargado y registrado."
-                                )
-                                st.rerun()
 
-                        except Exception as e:
-                            st.error(f"Error al procesar plantilla Word: {e}")
+                                if f_fin_p1 and f_fin_p1 != f_ini_p1:
+                                    nombre_word = f"Aviso_Cortes_{sufijo_sistema}_{fecha_ini_str}_a_{f_fin_p1.strftime('%Y%m%d')}.docx"
+                                else:
+                                    nombre_word = f"Aviso_Cortes_{sufijo_sistema}_{fecha_ini_str}.docx"
+
+                                label_boton = (
+                                    f"Descargar Word ({sistema_filtro_p1})"
+                                    if sistema_filtro_p1 != "TODOS"
+                                    else "Descargar Documento Word (TODOS)"
+                                )
+
+                                if st.download_button(
+                                    label=label_boton,
+                                    data=target_stream,
+                                    file_name=nombre_word,
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                ):
+                                    usr_id_actual = st.session_state.get(
+                                        "usuario_info", {}
+                                    ).get("usr_id")
+                                    lista_codigos = df_p1_seleccionados[
+                                        "prgcod"
+                                    ].tolist()
+                                    registrar_cortes_exportados(
+                                        lista_codigos, usr_id_actual, "DOCX"
+                                    )
+                                    st.success(
+                                        "🎉 Documento Word descargado y registrado."
+                                    )
+                                    st.rerun()
+
+                            except Exception as e:
+                                st.error(
+                                    f"Error al procesar plantilla Word: {e}"
+                                )
 
         elif st.session_state["vista_actual"] == "analizador":
             st.markdown(
@@ -1005,9 +1173,9 @@ with col_derecha:
                         re.match(r"^\((.*?)\)", str(row["descripcion"])).group(1)
                         if re.match(r"^\((.*?)\)", str(row["descripcion"]))
                         else "",
-                        row.get("tdciucod", "")
+                        row.get("tdciucod", ""),
                     ),
-                    axis=1
+                    axis=1,
                 )
 
                 df_analisis = df_analisis[
@@ -1023,6 +1191,26 @@ with col_derecha:
                         f"{round(df_analisis['duracion_horas'].mean(), 1)} hrs",
                     )
 
+                # ==========================================
+                # CONFIGURACIÓN DINÁMICA DE EXPORTACIÓN PLOTLY
+                # ==========================================
+                str_f_ini = f_ini_p2.strftime("%Y%m%d")
+                str_f_fin = f_fin_p2.strftime("%Y%m%d")
+                nombre_archivo_png = f"Grafico_cortes_{str_f_ini}_a_{str_f_fin}"
+
+                config_plotly_descarga = {
+                    "locale": "es",
+                    "locales": CONFIG_PLOTLY_ES["locales"],
+                    "displayModeBar": True,
+                    "toImageButtonOptions": {
+                        "format": "png",
+                        "filename": nombre_archivo_png,
+                        "height": 650,
+                        "width": 1200,
+                        "scale": 2,
+                    },
+                }
+
                 col_g1, col_g2 = st.columns(2)
                 with col_g1:
                     df_conteo = (
@@ -1031,11 +1219,13 @@ with col_derecha:
                         .reset_index(name="Cantidad")
                     )
 
+                    rango_texto_sub = f"Periodo: {f_ini_p2.strftime('%d/%m/%Y')} al {f_fin_p2.strftime('%d/%m/%Y')}"
+
                     fig_bar = px.bar(
                         df_conteo,
                         x="Sistema",
                         y="Cantidad",
-                        title="Distribución de Cortes por Sistema",
+                        title=f"<b>Distribución de Cortes por Sistema</b><br><sup>{rango_texto_sub}</sup>",
                         color="Sistema",
                         text_auto=True,
                         color_discrete_sequence=[
@@ -1052,21 +1242,29 @@ with col_derecha:
                         hovertemplate="<b>%{x}</b><br>Total Cortes: %{y}<extra></extra>",
                     )
 
+                    # SOLUCIÓN MODO CLARO/TRANSPARENTE
                     fig_bar.update_layout(
-                        plot_bgcolor="rgba(0,0,0,0)",
                         paper_bgcolor="rgba(0,0,0,0)",
-                        font_color=(
-                            "white"
-                            if st.get_option("theme.base") == "dark"
-                            else "black"
-                        ),
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font=dict(color="#1F2937"),
                         yaxis_title="Cantidad de Cortes",
+                        margin=dict(b=120),
+                        xaxis=dict(
+                            tickangle=-35,
+                            type="category",
+                            gridcolor="#E5E7EB",
+                            zerolinecolor="#D1D5DB",
+                        ),
+                        yaxis=dict(
+                            gridcolor="#E5E7EB",
+                            zerolinecolor="#D1D5DB",
+                        ),
                     )
 
                     st.plotly_chart(
                         fig_bar,
                         use_container_width=True,
-                        config=CONFIG_PLOTLY_ES,
+                        config=config_plotly_descarga,
                     )
 
                 with col_g2:
@@ -1083,27 +1281,35 @@ with col_derecha:
                         x="fecha_dia",
                         y="cantidad_cortes",
                         color="Sistema",
-                        title="Frecuencia Operativa",
+                        title=f"<b>Frecuencia Operativa</b><br><sup>{rango_texto_sub}</sup>",
                         color_discrete_sequence=[
                             "#E04F1D",
                             "#052E2B",
                             "#A8C591",
                         ],
                     )
+
+                    # SOLUCIÓN MODO CLARO/TRANSPARENTE
                     fig_lineas.update_layout(
-                        plot_bgcolor="rgba(0,0,0,0)",
                         paper_bgcolor="rgba(0,0,0,0)",
-                        font_color=(
-                            "white"
-                            if st.get_option("theme.base") == "dark"
-                            else "black"
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font=dict(color="#1F2937"),
+                        margin=dict(b=100),
+                        xaxis=dict(
+                            tickangle=-35,
+                            gridcolor="#E5E7EB",
+                            zerolinecolor="#D1D5DB",
+                        ),
+                        yaxis=dict(
+                            gridcolor="#E5E7EB",
+                            zerolinecolor="#D1D5DB",
                         ),
                     )
 
                     st.plotly_chart(
                         fig_lineas,
                         use_container_width=True,
-                        config=CONFIG_PLOTLY_ES,
+                        config=config_plotly_descarga,
                     )
 
 # ==========================================
@@ -1113,7 +1319,7 @@ st.markdown(
     """
     <div class="custom-footer">
         <div class="footer-brand">DELAPAZ — Departamento de Comunicaciones y RRPP</div>
-        <div>Plataforma de Consulta y de Cortes de Energía © 2026</div>
+        <div>Plataforma de Consulta de Interrupciones Programadas de Energía © 2026</div>
         <div class="footer-author">Desarrollado: Efrain Callizaya - 75866754</div>
     </div>
     """,
