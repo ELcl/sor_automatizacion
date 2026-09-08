@@ -13,6 +13,14 @@ Plataforma integral desarrollada en **Python / Streamlit** para la consulta, con
 
 ---
 
+## 📝 Cambios Recientes
+
+### Mejores Visuales en Interfaz (`interface.py`)
+- **Formatos de Tabla (`st.data_editor`):** 
+  - Se configuró `column_config` para capitalizar y renombrar los encabezados visibles de la tabla de cortes (`Inicio`, `Fin`, `Motivo`, `Nro SOR`, etc.).
+  - Se desacopló la representación visual de las claves del DataFrame interno, preservando la compatibilidad de datos para las exportaciones en **Word** y **HTML**.
+  - Se estandarizó el formato visual de fechas a `DD/MM/YYYY HH:mm`.
+
 ## 📂 Estructura del Proyecto
 
 ```text
