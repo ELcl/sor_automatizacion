@@ -25,7 +25,7 @@ DB_PASS = "admin_12345"
 DB_LOCAL_HOST = "localhost"
 DB_LOCAL_NAME = "postgres"
 DB_LOCAL_USER = "postgres"
-DB_LOCAL_PASS = ""
+DB_LOCAL_PASS = "postgres"
 DB_LOCAL_PORT = 5432
 
 DIAS_ESPANOL = {
@@ -103,7 +103,7 @@ CONFIG_PLOTLY_ES = {
 # CONFIGURACIÓN DE PÁGINA
 # ==========================================
 st.set_page_config(
-    page_title="SOR - DELAPAZ Service Center", layout="wide", page_icon="⚡"
+    page_title="SOR - DELAPAZ", layout="wide", page_icon="⚡"
 )
 
 
@@ -224,10 +224,11 @@ if not st.session_state["autenticado"]:
         with st.container(border=True):
             st.markdown(
                 """
-    <div class="energy-banner">
-        <h1>Bienvenido</h1>
-    </div>
-    """,
+                    <div class="energy-banner" style="text-align: center; padding: 25px 15px 25px 15px;">
+                        <img src="app/static/logo_blanco.png" alt="DELAPAZ" style="height: 75px; width: auto; object-fit: contain; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.15)); margin-bottom: 15px;">
+                        <h3 style="margin: 0; color: #FFFFFF; font-weight: 400;">Plataforma de consulta, consolidación y reportes de cortes de energía</h3>
+                    </div>
+                """,
                 unsafe_allow_html=True,
             )
 
@@ -240,8 +241,10 @@ if not st.session_state["autenticado"]:
                 )
 
                 btn_ingresar = st.form_submit_button(
-                    "Iniciar Sesión", use_container_width=True
-                )
+    "Iniciar Sesión", 
+    type="primary", 
+    use_container_width=True
+)
 
                 if btn_ingresar:
                     if not usuario or not password:
@@ -412,7 +415,7 @@ def extraer_datos_db(fecha_ini, fecha_fin, estado=None):
                     exportado_por_lista.append("Pendiente")
                     incluir_lista.append(True)
 
-            df["Exportado Por"] = exportado_por_lista
+            df["Exportado por"] = exportado_por_lista
             df["Incluir en Reporte"] = incluir_lista
 
         return df
@@ -743,7 +746,7 @@ with col_derecha:
 
             with col_fecha_p1:
                 rango_p1 = st.date_input(
-                    "Ventana de Publicación",
+                    "Fecha(s)",
                     [datetime.now(), datetime.now()],
                     format="DD/MM/YYYY",
                     key="rango_prensa",
@@ -760,7 +763,7 @@ with col_derecha:
                 }
 
                 estado_p1 = st.selectbox(
-                    "Estado BD",
+                    "Estado",
                     options=list(ESTADOS_DB.keys()),
                     format_func=lambda clave: ESTADOS_DB[clave],
                     index=1,
@@ -769,7 +772,7 @@ with col_derecha:
 
             with col_buscar_p1:
                 busqueda_texto = st.text_input(
-                    "Buscar en la tabla",
+                    "Búsqueda",
                     placeholder="Escribe para filtrar...",
                     key="busqueda_filtro_tabla",
                 )
@@ -845,7 +848,7 @@ with col_derecha:
                 if busqueda_texto.strip():
                     query_str = busqueda_texto.strip().lower()
                     mascara_busqueda = (
-                        df_filtrado_vista["Exportado Por"]
+                        df_filtrado_vista["Exportado por"]
                         .astype(str)
                         .str.lower()
                         .str.contains(query_str, na=False)
@@ -865,7 +868,7 @@ with col_derecha:
                     df_filtrado_vista = df_filtrado_vista[mascara_busqueda].copy()
 
                 st.success(
-                    f"✓ Conexión establecida. Registros mostrados: {len(df_filtrado_vista)} (Total en fecha: {len(df_p1)})"
+                    f"✓ Registros mostrados: {len(df_filtrado_vista)} (De un total de: {len(df_p1)})"
                 )
 
                 df_vista = df_filtrado_vista.copy()
@@ -876,14 +879,14 @@ with col_derecha:
                 )
 
                 df_vista = df_vista.rename(
-                    columns={"prgfhapr": "Autorizado", "prglbl": "SOR"}
+                    columns={"prgfhapr": "Autorizado", "prglbl": "Nro SOR"}
                 )
 
                 columnas_vista = [
                     "#",
                     "Incluir en Reporte",
-                    "Exportado Por",
-                    "SOR",
+                    "Exportado por",
+                    "Nro SOR",
                     "inicio",
                     "fin",
                     "Autorizado",
@@ -906,24 +909,33 @@ with col_derecha:
                             help="Selecciona para incluir este corte en las exportaciones Word/HTML",
                             default=True,
                         ),
-                        "Exportado Por": st.column_config.TextColumn(
-                            "Exportado Por",
+                        "Exportado por": st.column_config.TextColumn(
+                            "Exportado por",
                             help="Usuarios y formato con el que ya se ha generado el reporte de este corte",
                             disabled=True,
                         ),
-                        "SOR": st.column_config.TextColumn(disabled=True),
+                        "Nro SOR": st.column_config.TextColumn("Nro SOR", disabled=True),
                         "inicio": st.column_config.DatetimeColumn(
-                            disabled=True
+                            "Inicio", 
+                            disabled=True,
+                            format="DD/MM/YYYY HH:mm",
                         ),
-                        "fin": st.column_config.DatetimeColumn(disabled=True),
+                        "fin": st.column_config.DatetimeColumn(
+                            "Fin", 
+                            disabled=True,
+                            format="DD/MM/YYYY HH:mm",
+                        ),
                         "Autorizado": st.column_config.DatetimeColumn(
-                            disabled=True
+                            "Autorizado", 
+                            disabled=True,
+                            format="DD/MM/YYYY HH:mm",
                         ),
-                        "Sistema": st.column_config.TextColumn(disabled=True),
+                        "Sistema": st.column_config.TextColumn("Sistema", disabled=True),
                         "Zonas Normalizadas": st.column_config.TextColumn(
+                            "Zonas",
                             disabled=True
                         ),
-                        "motivo": st.column_config.TextColumn(disabled=True),
+                        "motivo": st.column_config.TextColumn("Motivo", disabled=True),
                     },
                     disabled=[
                         c for c in columnas_vista if c != "Incluir en Reporte"
@@ -1105,7 +1117,7 @@ with col_derecha:
                                 label_boton = (
                                     f"Descargar Word ({sistema_filtro_p1})"
                                     if sistema_filtro_p1 != "TODOS"
-                                    else "Descargar Documento Word (TODOS)"
+                                    else "Descargar Word (.docx)"
                                 )
 
                                 if st.download_button(
