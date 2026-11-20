@@ -10,8 +10,14 @@ import re
 import bcrypt
 from docxtpl import DocxTemplate
 import pandas as pd
+import plotly.express as px
 import psycopg2
 import streamlit as st
+
+import os
+from dotenv import load_dotenv
+from llm_service import obtener_datos_operativos_db, generar_diagnostico_operativo
+
 
 # ==========================================
 # CONFIGURACIÓN DE CREDENCIALES
@@ -226,7 +232,7 @@ if not st.session_state["autenticado"]:
                 """
                     <div class="energy-banner" style="text-align: center; padding: 25px 15px 25px 15px;">
                         <img src="app/static/logo_blanco.png" alt="DELAPAZ" style="height: 75px; width: auto; object-fit: contain; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.15)); margin-bottom: 15px;">
-                        <h3 style="margin: 0; color: #FFFFFF; font-weight: 400;">Plataforma de consulta, consolidación y reportes de cortes de energía</h3>
+                        <h3 style="margin: 0; color: #FFFFFF; font-weight: 400;">Plataforma de consulta, consolidación y reportes de interrupciones de servicio de energía eléctrica</h3>
                     </div>
                 """,
                 unsafe_allow_html=True,
@@ -241,10 +247,10 @@ if not st.session_state["autenticado"]:
                 )
 
                 btn_ingresar = st.form_submit_button(
-    "Iniciar Sesión", 
-    type="primary", 
-    use_container_width=True
-)
+                    "Iniciar Sesión", 
+                    type="primary", 
+                    use_container_width=True
+                )
 
                 if btn_ingresar:
                     if not usuario or not password:
@@ -273,7 +279,7 @@ if not st.session_state["autenticado"]:
 st.markdown(
     """
     <div class="energy-banner">
-        <h1>Plataforma de consulta, consolidación y reportes de cortes de energía</h1>
+        <h1>Plataforma de consulta, consolidación y reportes de interrupciones de servicio de energía eléctrica</h1>
     </div>
     """,
     unsafe_allow_html=True,
@@ -371,7 +377,7 @@ def extraer_datos_db(fecha_ini, fecha_fin, estado=None):
         )
         if estado and estado != "TODOS":
             query = """
-                SELECT prgcod, prglbl, prgfhinip AS inicio, prgfhfinp AS fin, prgfhapr, prgdsc AS descripcion, prgmotdsc AS motivo,
+                SELECT prgcod, prglbl, prgfhinip AS inicio, prgfhfinp AS fin, prgfhinir, prgfhfinr, prgfhapr, prgdsc AS descripcion, prgmotdsc AS motivo,
                        pernomazt, perpmaprb, perpmcoi, tdmoddsg, prgtotkva, prgtotcon, prgfhaviso, prgasigtra, prgproynro,
                        circod, subcod, tdciucod, perpmresp, prgavipre, prgaviper, prgavialc
                 FROM public.sorprogram
@@ -384,7 +390,7 @@ def extraer_datos_db(fecha_ini, fecha_fin, estado=None):
             params = (f"{fecha_ini} 00:00:00", f"{fecha_fin} 23:59:59", estado)
         else:
             query = """
-                SELECT prgcod, prglbl, prgfhinip AS inicio, prgfhfinp AS fin, prgfhapr, prgdsc AS descripcion, prgmotdsc AS motivo,
+                SELECT prgcod, prglbl, prgfhinip AS inicio, prgfhfinp AS fin, prgfhinir, prgfhfinr, prgfhapr, prgdsc AS descripcion, prgmotdsc AS motivo,
                        pernomazt, perpmaprb, perpmcoi, tdmoddsg, prgtotkva, prgtotcon, prgfhaviso, prgasigtra, prgproynro,
                        circod, subcod, tdciucod, perpmresp, prgavipre, prgaviper, prgavialc
                 FROM public.sorprogram
@@ -410,9 +416,11 @@ def extraer_datos_db(fecha_ini, fecha_fin, estado=None):
                 registros = historial.get(cod, [])
                 if registros:
                     exportado_por_lista.append(", ".join(registros))
+                    # Si ya fue exportado previamente, el checkbox por defecto debe estar destiqueado (False)
                     incluir_lista.append(False)
                 else:
                     exportado_por_lista.append("Pendiente")
+                    # Si está pendiente, el checkbox por defecto se mantiene tiqueado (True)
                     incluir_lista.append(True)
 
             df["Exportado por"] = exportado_por_lista
@@ -423,6 +431,44 @@ def extraer_datos_db(fecha_ini, fecha_fin, estado=None):
         st.error(f"❌ Error de conexión a la Base de Datos: {e}")
         return pd.DataFrame()
 
+
+
+def formatear_horas_a_texto(horas_decimal):
+    """Convierte horas decimales a un formato legible en horas y minutos."""
+    if horas_decimal is None or pd.isna(horas_decimal):
+        return "Sin datos"
+
+    total_minutos = int(round(horas_decimal * 60))
+    horas = total_minutos // 60
+    minutos = total_minutos % 60
+
+    if horas == 0:
+        return f"{minutos} min"
+    elif minutos == 0:
+        unidad_hr = "hr" if horas == 1 else "hrs"
+        return f"{horas} {unidad_hr}"
+    else:
+        unidad_hr = "hr" if horas == 1 else "hrs"
+        return f"{horas} {unidad_hr} {minutos} min"
+
+
+def categorizar_motivo(texto):
+    """Categoriza descripciones largas de motivos en macro-categorías para el Top 5."""
+    if not isinstance(texto, str):
+        return "Otros / Varios"
+    
+    texto_upper = texto.upper()
+    
+    if any(k in texto_upper for k in ["POSTE", "POSTES", "ESTRUCTURA"]):
+        return "Infraestructura y Postes"
+    elif any(k in texto_upper for k in ["CABLE", "LINEA", "LÍNEA", "RECABLEADO", "TENDIDO"]):
+        return "Redes y Cableado"
+    elif any(k in texto_upper for k in ["ENERGIZACION", "ENERGIZACIÓN", "C.T.", "CONEXIÓN"]):
+        return "Energización de Zonas"
+    elif any(k in texto_upper for k in ["TRANSFORMADOR", "ROTACIÓN", "MANTENIMIENTO", "REVISIÓN"]):
+        return "Mantenimiento de Equipos"
+    else:
+        return "Otros / Trabajos Varios"
 
 def extraer_operaciones_lote(lista_prgcod):
     """Extrae la lista de operaciones detalladas con TCP Keep-Alive."""
@@ -454,6 +500,7 @@ def extraer_operaciones_lote(lista_prgcod):
         return pd.DataFrame()
 
 
+
 def normalizar_texto_zonas(desc_original):
     texto_sin_sistema = re.sub(r"^\(.*?\)\s*", "", desc_original).strip()
     return re.sub(r"^[.,\s\-:;]+", "", texto_sin_sistema).strip()
@@ -474,6 +521,23 @@ def homologar_sistema(texto_parentesis, tdciucod=None):
         return "SISTEMA NUEVO"
 
     return "SISTEMA GENERAL"
+
+
+def homologar_sistema_4_cat(texto_parentesis, tdciucod=None):
+    """Homologa cualquier variante exclusivamente a los 4 sistemas principales."""
+    txt = str(texto_parentesis).upper().strip()
+    codigo_ciudad = str(tdciucod).strip().upper() if tdciucod else ""
+
+    if "MAYOR" in txt or "YMAYOR" in txt or codigo_ciudad in MAPEO_CIUDADES:
+        return "SISTEMA MAYOR"
+    elif "NORTE" in txt or "NRT" in txt:
+        return "SISTEMA NORTE"
+    elif "AROMA" in txt or "ARM" in txt:
+        return "SISTEMA AROMA"
+    elif "NUEVO" in txt or "NVO" in txt:
+        return "SISTEMA NUEVO"
+    
+    return "SISTEMA MAYOR"
 
 
 def procesar_y_agrupar(df):
@@ -503,7 +567,6 @@ def procesar_y_agrupar(df):
             else "MANTENIMIENTO PREVENTIVO"
         )
 
-        # Captura y validación del número de SOR (prglbl)
         sor_val = (
             str(fila["prglbl"]).strip()
             if pd.notna(fila.get("prglbl")) and str(fila["prglbl"]).strip() != ""
@@ -523,7 +586,6 @@ def procesar_y_agrupar(df):
             "detalle_zonas": detalle_zonas_procesado,
         })
 
-    # ORDENAMIENTO COMPLETO DE SECCIONES
     orden_secciones = CIUDADES_SISTEMA_MAYOR + [
         "SISTEMA AROMA",
         "SISTEMA NUEVO",
@@ -675,10 +737,16 @@ with col_izquierda:
         st.session_state["vista_actual"] = "operaciones"
         st.rerun()
 
+    # if st.button(
+    #     "📊 Analizador de Cortes", key="btn_an", use_container_width=True
+    # ):
+    #     st.session_state["vista_actual"] = "analizador"
+    #     st.rerun()
+
     if st.button(
-        "📊 Analizador de Cortes", key="btn_an", use_container_width=True
+        "📑 Reportes y Gestión", key="btn_rep", use_container_width=True
     ):
-        st.session_state["vista_actual"] = "analizador"
+        st.session_state["vista_actual"] = "reportes_gestion"
         st.rerun()
 
     st.markdown(
@@ -691,9 +759,9 @@ with col_izquierda:
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-    es_analizador = st.session_state.get("vista_actual") == "analizador"
-    clase_p1 = "oculto" if es_analizador else "visible"
-    clase_p2 = "visible" if es_analizador else "oculto"
+    vista_act = st.session_state.get("vista_actual", "operaciones")
+    clase_p1 = "visible" if vista_act == "operaciones" else "oculto"
+    clase_p2 = "visible" if vista_act in ["analizador", "reportes_gestion"] else "oculto"
 
     st.markdown(
         f"""<div class="contact-card">
@@ -1171,8 +1239,6 @@ with col_derecha:
             if df_p2.empty:
                 st.info("ℹ No se registran cortes en este rango temporal.")
             else:
-                import plotly.express as px
-
                 df_analisis = df_p2.copy()
                 df_analisis["inicio"] = pd.to_datetime(df_analisis["inicio"])
                 df_analisis["fin"] = pd.to_datetime(df_analisis["fin"])
@@ -1181,7 +1247,7 @@ with col_derecha:
                 ).dt.total_seconds() / 3600
 
                 df_analisis["Sistema"] = df_analisis.apply(
-                    lambda row: homologar_sistema(
+                    lambda row: homologar_sistema_4_cat(
                         re.match(r"^\((.*?)\)", str(row["descripcion"])).group(1)
                         if re.match(r"^\((.*?)\)", str(row["descripcion"]))
                         else "",
@@ -1189,10 +1255,6 @@ with col_derecha:
                     ),
                     axis=1,
                 )
-
-                df_analisis = df_analisis[
-                    df_analisis["Sistema"] != "SISTEMA GENERAL"
-                ]
 
                 col_kpi1, col_kpi2 = st.columns(2)
                 with col_kpi1:
@@ -1203,9 +1265,6 @@ with col_derecha:
                         f"{round(df_analisis['duracion_horas'].mean(), 1)} hrs",
                     )
 
-                # ==========================================
-                # CONFIGURACIÓN DINÁMICA DE EXPORTACIÓN PLOTLY
-                # ==========================================
                 str_f_ini = f_ini_p2.strftime("%Y%m%d")
                 str_f_fin = f_fin_p2.strftime("%Y%m%d")
                 nombre_archivo_png = f"Grafico_cortes_{str_f_ini}_a_{str_f_fin}"
@@ -1254,7 +1313,6 @@ with col_derecha:
                         hovertemplate="<b>%{x}</b><br>Total Cortes: %{y}<extra></extra>",
                     )
 
-                    # SOLUCIÓN MODO CLARO/TRANSPARENTE
                     fig_bar.update_layout(
                         paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(0,0,0,0)",
@@ -1281,27 +1339,27 @@ with col_derecha:
 
                 with col_g2:
                     df_linea = df_analisis.copy()
-                    df_linea["fecha_dia"] = df_linea["inicio"].dt.date
+                    df_linea["Fecha y día"] = df_linea["inicio"].dt.date
                     df_tendencia = (
-                        df_linea.groupby(["fecha_dia", "Sistema"])
+                        df_linea.groupby(["Fecha y día", "Sistema"])
                         .size()
-                        .reset_index(name="cantidad_cortes")
+                        .reset_index(name="Cantidad de Cortes")
                     )
 
                     fig_lineas = px.line(
                         df_tendencia,
-                        x="fecha_dia",
-                        y="cantidad_cortes",
+                        x="Fecha y día",
+                        y="Cantidad de Cortes",
                         color="Sistema",
                         title=f"<b>Frecuencia Operativa</b><br><sup>{rango_texto_sub}</sup>",
                         color_discrete_sequence=[
                             "#E04F1D",
                             "#052E2B",
                             "#A8C591",
+                            "#526361",
                         ],
                     )
 
-                    # SOLUCIÓN MODO CLARO/TRANSPARENTE
                     fig_lineas.update_layout(
                         paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(0,0,0,0)",
@@ -1324,6 +1382,394 @@ with col_derecha:
                         config=config_plotly_descarga,
                     )
 
+        # ==========================================
+        # VISTA DEL TERCER MÓDULO (REPORTES Y GESTIÓN)
+        # ==========================================
+        elif st.session_state["vista_actual"] == "reportes_gestion":
+            st.markdown(
+                '<h3 class="canvas-title">Módulo de Reportes Avanzados y Analítica</h3>',
+                unsafe_allow_html=True,
+            )
+
+            # Instanciación de las pestañas ajustadas al propósito formal
+            tab1, tab2, tab3 = st.tabs([
+                "📅 Evolución Temporal", 
+                "📊 Indicadores Clave (KPIs)", 
+                "🤖 Predicciones e IA"
+            ])
+
+            # ---------------------------------------------------------
+            # PESTAÑA 1: EVOLUCIÓN TEMPORAL (Datos Históricos)
+            # ---------------------------------------------------------
+            with tab1:
+                st.subheader("Análisis Histórico de Interrupciones por Periodos")
+                
+                col_filt1, col_filt2 = st.columns([2, 1])
+                with col_filt1:
+                    periodo_sel = st.radio(
+                        "Selecciona la frecuencia temporal:",
+                        ["Anual", "Semestral", "Trimestral", "Mensual"],
+                        horizontal=True,
+                        key="radio_periodos_temp"
+                    )
+                with col_filt2:
+                    rango_hist = st.date_input(
+                        "Rango de Fechas Histórico",
+                        [datetime(2023, 1, 1), datetime.now()],
+                        format="DD/MM/YYYY",
+                        key="rango_historico_p1"
+                    )
+
+                f_ini_hist = rango_hist[0] if len(rango_hist) > 0 else datetime(2023, 1, 1)
+                f_fin_hist = rango_hist[1] if len(rango_hist) == 2 else datetime.now()
+
+                df_hist = extraer_datos_db(f_ini_hist, f_fin_hist)
+
+                if df_hist.empty:
+                    st.info("ℹ️ No existen registros históricos suficientes para el rango seleccionado.")
+                else:
+                    df_hist["inicio"] = pd.to_datetime(df_hist["inicio"])
+                    df_hist["Sistema"] = df_hist.apply(
+                        lambda r: homologar_sistema_4_cat(
+                            re.match(r"^\((.*?)\)", str(r["descripcion"])).group(1)
+                            if re.match(r"^\((.*?)\)", str(r["descripcion"]))
+                            else "",
+                            r.get("tdciucod", ""),
+                        ),
+                        axis=1,
+                    )
+                    
+                    st.markdown("<hr style='border:0; border-top: 1px solid var(--border-color); margin: 15px 0;'>", unsafe_allow_html=True)
+
+                    if periodo_sel == "Anual":
+                        st.markdown("#### 📈 Distribución y Acumulado Anual")
+                        df_hist["Año"] = df_hist["inicio"].dt.year.astype(str)
+                        df_anual = df_hist.groupby(["Año", "Sistema"]).size().reset_index(name="Total Cortes")
+                        
+                        fig_anual = px.bar(
+                            df_anual,
+                            x="Año",
+                            y="Total Cortes",
+                            color="Sistema",
+                            barmode="group",
+                            text_auto=True,
+                            title="Total de Interrupciones Registradas por Año",
+                            color_discrete_sequence=["#052E2B", "#E04F1D", "#A8C591", "#526361"]
+                        )
+                        fig_anual.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+                        st.plotly_chart(fig_anual, use_container_width=True, config=CONFIG_PLOTLY_ES)
+
+                    elif periodo_sel == "Semestral":
+                        st.markdown("#### 📅 Comportamiento Semestral (S1 vs S2)")
+                        df_hist["Año"] = df_hist["inicio"].dt.year.astype(str)
+                        df_hist["Semestre"] = df_hist["inicio"].dt.month.apply(lambda m: "S1 (Ene-Jun)" if m <= 6 else "S2 (Jul-Dic)")
+                        df_hist["Periodo_Semestral"] = df_hist["Año"] + " - " + df_hist["Semestre"]
+                        
+                        df_sem = df_hist.groupby(["Periodo_Semestral", "Sistema"]).size().reset_index(name="Total Cortes")
+                        fig_sem = px.bar(
+                            df_sem,
+                            x="Periodo_Semestral",
+                            y="Total Cortes",
+                            color="Sistema",
+                            text_auto=True,
+                            title="Comparativa Semestral de Cortes de Energía",
+                            color_discrete_sequence=["#052E2B", "#E04F1D", "#A8C591", "#526361"]
+                        )
+                        fig_sem.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", xaxis_title="Periodo Semestral")
+                        st.plotly_chart(fig_sem, use_container_width=True, config=CONFIG_PLOTLY_ES)
+
+                    elif periodo_sel == "Trimestral":
+                        st.markdown("#### 🧱 Análisis Estacional por Trimestre (Q1 - Q4)")
+                        df_hist["Año"] = df_hist["inicio"].dt.year.astype(str)
+                        df_hist["Trimestre"] = "Q" + df_hist["inicio"].dt.quarter.astype(str)
+                        df_hist["Periodo_Trimestral"] = df_hist["Año"] + " " + df_hist["Trimestre"]
+                        
+                        df_tri = df_hist.groupby(["Periodo_Trimestral", "Sistema"]).size().reset_index(name="Total Cortes")
+                        fig_tri = px.bar(
+                            df_tri,
+                            x="Periodo_Trimestral",
+                            y="Total Cortes",
+                            color="Sistema",
+                            text_auto=True,
+                            title="Distribución Trimestral de Interrupciones",
+                            color_discrete_sequence=["#052E2B", "#E04F1D", "#A8C591", "#526361"]
+                        )
+                        fig_tri.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", xaxis_title="Trimestre")
+                        st.plotly_chart(fig_tri, use_container_width=True, config=CONFIG_PLOTLY_ES)
+
+                    elif periodo_sel == "Mensual":
+                        st.markdown("#### 🗓️ Tendencia Mensual Continuada")
+                        df_hist["Año-Mes"] = df_hist["inicio"].dt.to_period("M").astype(str)
+                        df_mes = df_hist.groupby(["Año-Mes", "Sistema"]).size().reset_index(name="Total Cortes")
+                        
+                        fig_mes = px.line(
+                            df_mes,
+                            x="Año-Mes",
+                            y="Total Cortes",
+                            color="Sistema",
+                            markers=True,
+                            title="Evolución Mensual del Nivel de Cortes",
+                            color_discrete_sequence=["#E04F1D", "#052E2B", "#A8C591", "#526361"]
+                        )
+                        fig_mes.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", xaxis_title="Mes")
+                        st.plotly_chart(fig_mes, use_container_width=True, config=CONFIG_PLOTLY_ES)
+
+            # ---------------------------------------------------------
+            # PESTAÑA 2: INDICADORES CLAVE (KPIs)
+            # ---------------------------------------------------------
+            with tab2:
+                st.subheader("Cuadro de Mando Integrado y Métricas de Gestión")
+                
+                # 1. Filtro por Período de Gestión
+                col_kpi_f1, _ = st.columns([2, 2])
+                with col_kpi_f1:
+                    periodo_sel = st.selectbox(
+                        "Seleccionar Período de Análisis (Gestión Actual)",
+                        [
+                            "Gestión Actual (Año Completo)",
+                            "Último Semestre (6 Meses)",
+                            "Último Trimestre (3 Meses)"
+                        ],
+                        key="periodo_kpi_tab2"
+                    )
+                
+                hoy = datetime.now().date()
+                if periodo_sel == "Último Trimestre (3 Meses)":
+                    f_ini_kpi = hoy - timedelta(days=90)
+                elif periodo_sel == "Último Semestre (6 Meses)":
+                    f_ini_kpi = hoy - timedelta(days=180)
+                else:
+                    f_ini_kpi = datetime(hoy.year, 1, 1).date()
+
+                f_fin_kpi = hoy
+
+                # 2. Extracción de Datos
+                df_kpi = extraer_datos_db(f_ini_kpi, f_fin_kpi)
+
+                if df_kpi.empty:
+                    st.info("ℹ️ No existen registros de operaciones para el período seleccionado.")
+                else:
+                    # Fechas Programadas
+                    df_kpi["inicio_prog"] = pd.to_datetime(df_kpi["inicio"])
+                    df_kpi["fin_prog"] = pd.to_datetime(df_kpi["fin"])
+                    df_kpi["duracion_prog_hrs"] = (df_kpi["fin_prog"] - df_kpi["inicio_prog"]).dt.total_seconds() / 3600.0
+
+                    # Verificación de existencia de columnas reales
+                    has_real_data = "prgfhinir" in df_kpi.columns and "prgfhfinr" in df_kpi.columns
+
+                    if has_real_data:
+                        df_kpi["inicio_real"] = pd.to_datetime(df_kpi["prgfhinir"], errors="coerce")
+                        df_kpi["fin_real"] = pd.to_datetime(df_kpi["prgfhfinr"], errors="coerce")
+                        
+                        # Filtramos solo registros que TIENEN datos reales registrados
+                        df_con_real = df_kpi.dropna(subset=["inicio_real", "fin_real"]).copy()
+                        
+                        if not df_con_real.empty:
+                            df_con_real["duracion_real_hrs"] = (df_con_real["fin_real"] - df_con_real["inicio_real"]).dt.total_seconds() / 3600.0
+                            df_con_real["desviacion_min"] = ((df_con_real["duracion_real_hrs"] - df_con_real["duracion_prog_hrs"]) * 60.0).round(1)
+                            
+                            prom_real = round(df_con_real["duracion_real_hrs"].mean(), 2)
+                            num_con_registro = len(df_con_real)
+                        else:
+                            prom_real = None
+                            num_con_registro = 0
+                    else:
+                        prom_real = None
+                        num_con_registro = 0
+
+                   # 3. Mapeo de Métricas Principales (KPIs)
+                    total_operaciones = df_kpi["prgcod"].nunique()
+                    prom_prog = round(df_kpi["duracion_prog_hrs"].mean(), 2) if not df_kpi["duracion_prog_hrs"].isna().all() else 0.0
+
+                    # 1. Programado: Valor principal corto + subtexto en delta
+                    str_prog = f"{prom_prog:.2f} hrs" if prom_prog > 0 else "0.0 hrs"
+                    delta_prog = f"⏱️ {formatear_horas_a_texto(prom_prog)}" if prom_prog > 0 else None
+
+                    # 2. Real y Desviación
+                    if prom_real is not None:
+                        str_real = f"{prom_real:.2f} hrs"
+                        delta_real = f"⏱️ {formatear_horas_a_texto(prom_real)}"
+                        
+                        diferencia = round(prom_real - prom_prog, 2)
+                        txt_diff = formatear_horas_a_texto(abs(diferencia))
+                        
+                        str_desviacion = f"{diferencia:.2f} hrs"
+                        # Pasamos solo el número float para que Streamlit maneje el signo y la flecha automáticamente
+                        delta_desviacion = f"{txt_diff}"
+                    else:
+                        str_real = "Sin datos"
+                        delta_real = None
+                        str_desviacion = "N/A"
+                        delta_desviacion = None
+
+                    # Renderizado en columnas
+                    k1, k2, k3, k4 = st.columns(4)
+                    with k1:
+                        st.metric("Total Operaciones", f"{total_operaciones:,}")
+                    with k2:
+                        st.metric("Duración Prom. Programada", str_prog, delta=delta_prog, delta_color="off")
+                    with k3:
+                        if prom_real is not None:
+                            st.metric("Duración Prom. Real", str_real, delta=delta_real, delta_color="off", help=f"Calculado sobre {num_con_registro} operaciones.")
+                        else:
+                            st.metric("Duración Prom. Real", "Sin datos")
+                    with k4:
+                        if prom_real is not None:
+                            st.metric("Desviación Promedio", str_desviacion, delta=delta_desviacion, delta_color="inverse")
+                        else:
+                            st.metric("Desviación Promedio", "N/A")
+
+                    # 4. Visualizaciones Gráficas
+                    col_plazos, col_motivos = st.columns(2)
+
+                    with col_plazos:
+                        st.markdown("#### ⏱️ Cumplimiento de Plazos Ejecutados vs. Programados")
+                        if has_real_data and num_con_registro > 0:
+                            df_desviacion = df_con_real.copy()
+                            df_desviacion["Estado_Plazo"] = df_desviacion["desviacion_min"].apply(
+                                lambda x: "A Tiempo / Antes" if x <= 0 else ("Retraso Leve (<30m)" if x <= 30 else "Retraso Mayor (>30m)")
+                            )
+                            df_plazo_resumen = df_desviacion["Estado_Plazo"].value_counts().reset_index()
+                            df_plazo_resumen.columns = ["Estado", "Cantidad"]
+
+                            fig_plazos = px.pie(
+                                df_plazo_resumen,
+                                values="Cantidad",
+                                names="Estado",
+                                title="<b>Evaluación de Desviación de Tiempos (Datos Reales)</b>",
+                                color="Estado",
+                                color_discrete_map={
+                                    "A Tiempo / Antes": "#A8C591",
+                                    "Retraso Leve (<30m)": "#E04F1D",
+                                    "Retraso Mayor (>30m)": "#052E2B"
+                                },
+                                hole=0.4
+                            )
+                            fig_plazos.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+                            st.plotly_chart(fig_plazos, use_container_width=True, config=CONFIG_PLOTLY_ES)
+                        else:
+                            st.info("ℹ️ No hay suficientes registros con tiempos reales para generar el gráfico de plazos.")
+
+                    with col_motivos:
+                        st.markdown("#### 🔝 Top 5 Motivos de Interrupción")
+                        
+                        if "motivo" in df_kpi.columns:
+                            # 1. Aplicar la categorización
+                            df_kpi["categoria_motivo"] = df_kpi["motivo"].fillna("SIN ESPECIFICAR").apply(categorizar_motivo)
+                            
+                            # 2. Agrupar por la macro-categoría y obtener el Top 5
+                            df_motivos = (
+                                df_kpi["categoria_motivo"]
+                                .value_counts()
+                                .head(5)
+                                .reset_index()
+                            )
+                            df_motivos.columns = ["Motivo", "Frecuencia"]
+                            
+                            # 3. Construir el gráfico de barras horizontales
+                            fig_mot = px.bar(
+                                df_motivos.sort_values(by="Frecuencia", ascending=True),
+                                x="Frecuencia",
+                                y="Motivo",
+                                orientation="h",
+                                text_auto=True,
+                                title="<b>Análisis de Motivos Más Frecuentes</b>",
+                                color_discrete_sequence=["#052E2B"]
+                            )
+                            
+                            # 4. Estilo y ajuste fino de márgenes
+                            fig_mot.update_layout(
+                                paper_bgcolor="rgba(0,0,0,0)", 
+                                plot_bgcolor="rgba(0,0,0,0)", 
+                                xaxis_title="N° de Eventos",
+                                yaxis_title="",
+                                height=340,
+                                # l=160 garantiza espacio suficiente para las etiquetas del eje Y
+                                margin=dict(l=160, r=30, t=50, b=40)
+                            )
+                            
+                            # 5. Desactivar la barra flotante (displayModeBar=False) para evitar superposición
+                            st.plotly_chart(
+                                fig_mot, 
+                                use_container_width=True, 
+                                config={"displayModeBar": False, "responsive": True}
+                            )
+                        else:
+                            st.info("ℹ️ No se encontró la columna 'motivo' en la consulta realizada.")
+            
+            # ---------------------------------------------------------
+            # PESTAÑA 3: PREDICCIONES E IA
+            # ---------------------------------------------------------
+            with tab3:
+                st.subheader("Modelos Predictivos e Inteligencia Artificial")
+                st.info("Mantenimiento preventivo y detección de patrones operativos mediante Gemini IA.")
+
+                # 1. Control de rango de tiempo
+                col_periodo, _ = st.columns([2, 2])
+                with col_periodo:
+                    opcion_tiempo = st.selectbox(
+                        "📅 Selecciona el período de análisis:",
+                        options=["Último Mes (30 días)", "Últimos 3 Meses (90 días)", "Últimos 6 Meses (180 días)", "Último Año (365 días)"],
+                        index=2 # Por defecto: 6 Meses
+                    )
+
+                # Mapeo de la opción seleccionada a número de días
+                mapeo_dias = {
+                    "Último Mes (30 días)": 30,
+                    "Últimos 3 Meses (90 días)": 90,
+                    "Últimos 6 Meses (180 días)": 180,
+                    "Último Año (365 días)": 365
+                }
+                dias_seleccionados = mapeo_dias[opcion_tiempo]
+
+                st.divider()
+
+                # 2. Botón para ejecutar el análisis
+                if st.button("🚀 Generar Diagnóstico con Gemini IA", type="primary"):
+                    with st.spinner(f"Analizando los últimos {dias_seleccionados} días en sorbd_gis..."):
+                        
+                        # Pasa los días seleccionados a la consulta
+                        resumen, tendencia, criticos = obtener_datos_operativos_db(dias_seleccionados)                        
+                        if not resumen:
+                            st.error("No se pudieron extraer las métricas de la base de datos.")
+                        else:
+                            # Métrica de resumen
+                            st.markdown("#### 📊 Métricas Operativas Analizadas")
+                            col1, col2, col3 = st.columns(3)
+                            col1.metric("Solicitudes/Cortes", f"{resumen.get('total_cortes', 0):,}")
+                            #col2.metric("Duración Total (Horas)", f"{resumen.get('duracion_total', 0)/60:.1f} hrs")
+                            col3.metric("Duración Promedio", f"{resumen.get('duracion_promedio_min', 0):.1f} min")
+
+                            # 3. Gráfico interactivo de tendencia
+                            if tendencia:
+                                df_tendencia = pd.DataFrame(tendencia)
+                                
+                                fig = px.line(
+                                    df_tendencia, 
+                                    x="fecha", 
+                                    y="cantidad_programas",  # <--- Usar exactamente este nombre de columna
+                                    title=f"Evolución Diaria de Solicitudes (Últimos {dias_seleccionados} días)",
+                                    labels={
+                                        "fecha": "Fecha", 
+                                        "cantidad_programas": "Cantidad de Programas"
+                                    },
+                                    markers=True
+                                )
+                                
+                                fig.update_traces(line_color="#1f77b4")
+                                st.plotly_chart(fig, use_container_width=True)
+
+                            # 4. Diagnóstico de la IA
+                            diagnostico_markdown = generar_diagnostico_operativo(resumen, criticos)
+                            st.markdown(diagnostico_markdown)
+
+                            st.download_button(
+                                label="📥 Descargar Reporte (.md)",
+                                data=diagnostico_markdown,
+                                file_name=f"diagnostico_operativo_{dias_seleccionados}dias.md",
+                                mime="text/markdown"
+                            )
+
 # ==========================================
 # PIE DE PÁGINA (FOOTER)
 # ==========================================
@@ -1331,8 +1777,8 @@ st.markdown(
     """
     <div class="custom-footer">
         <div class="footer-brand">DELAPAZ — Departamento de Comunicaciones y RRPP</div>
-        <div>Plataforma de Consulta de Interrupciones Programadas de Energía © 2026</div>
-        <div class="footer-author">Desarrollado: Efrain Callizaya - 75866754</div>
+        <div>Plataforma de consulta, consolidación y reportes de interrupciones de servicio de energía eléctrica © 2026</div>
+        <div class="footer-author">Desarrollado por: Efrain Callizaya - 75866754</div>
     </div>
     """,
     unsafe_allow_html=True,

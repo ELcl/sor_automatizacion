@@ -327,3 +327,23 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
         opacity: 1;
     }
 }
+
+/* ==========================================================================
+   AJUSTE DE TAMAÑO PARA MÉTRICAS Y KPIS (st.metric)
+   ========================================================================== */
+
+/* Reduce el tamaño del valor numérico principal para evitar truncamiento (...) */
+[data-testid="stMetricValue"] {
+    font-size: 1.35rem !important;
+}
+
+/* Ajusta el tamaño de la etiqueta del delta (diferencia) */
+[data-testid="stMetricDelta"] {
+    font-size: 0.85rem !important;
+}
+
+/* Permite que el texto fluya mejor sin cortar antes de tiempo */
+[data-testid="stMetricValue"] > div {
+    white-space: normal !important;
+    word-break: break-word;
+}
